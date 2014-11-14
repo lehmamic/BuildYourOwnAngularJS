@@ -7,6 +7,8 @@ function Scope() {
   this.$$watchers = [];
   this.$$lastDirtyWatch = null;
   this.$$asyncQueue = [];
+  this.$$applyAsyncQueue = [];
+  this.$$applyAsyncId = null;
   this.$$phase = null;
 }
 
@@ -28,6 +30,11 @@ Scope.prototype.$digest = function() {
 
   this.$$lastDirtyWatch = null;
   this.$beginPhase('$digest');
+
+  if (this.$$applyAsyncId) {
+    clearTimeout(this.$$applyAsyncId);
+    this.$$flushApplyAsync();
+  }
 
   do {
     while (this.$$asyncQueue.length) {
@@ -52,6 +59,19 @@ Scope.prototype.$apply = function(expr) {
   } finally {
     this.$clearPhase();
     this.$digest();
+  }
+};
+
+Scope.prototype.$applyAsync = function(expr) {
+  var self = this;
+  self.$$applyAsyncQueue.push(function() {
+    self.$eval(expr);
+  });
+
+  if (self.$$applyAsyncId === null) {
+    self.$$applyAsyncId = setTimeout(function() {
+      self.$apply(_.bind(self.$$flushApplyAsync, self));
+    }, 0);
   }
 };
 
@@ -119,4 +139,11 @@ Scope.prototype.$$areEqual = function(newValue, oldValue, valueEq) {
       (typeof newValue === 'number' && typeof oldValue === 'number' &&
        isNaN(newValue) && isNaN(oldValue));
   }
+};
+
+Scope.prototype.$$flushApplyAsync = function() {
+  while (this.$$applyAsyncQueue.length) {
+    this.$$applyAsyncQueue.shift()();
+  }
+  this.$$applyAsyncId = null;
 };
